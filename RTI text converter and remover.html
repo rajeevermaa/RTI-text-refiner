@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RTI Online Text Cleaner</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--mut:#5d6679;--bd:#d5d9e2;--ac:#1f5fbf;--ok:#17803d;--bad:#b42318}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1b2029;--tx:#e8ebf2;--mut:#99a2b5;--bd:#2f3646;--ac:#6ea2f5;--ok:#4cc27a;--bad:#f2766b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,Segoe UI,Arial,sans-serif;padding:20px}
+main{max-width:900px;margin:auto}
+h1{font-size:1.5rem;margin:0 0 4px}
+p.s{color:var(--mut);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:16px}
+label{font-weight:600;display:block;margin-bottom:6px}
+textarea{width:100%;min-height:200px;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:15px/1.5 ui-monospace,Consolas,monospace;resize:vertical;white-space:pre-wrap}
+button{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-size:1rem;cursor:pointer;margin:10px 8px 0 0}
+button.g{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+table{border-collapse:collapse;width:100%;font-size:.92rem;display:block;overflow-x:auto}
+th,td{border-bottom:1px solid var(--bd);padding:6px 8px;text-align:left}
+code{background:var(--bg);padding:1px 6px;border-radius:4px;border:1px solid var(--bd)}
+.hid{display:none}
+.note{background:var(--bg);border-left:4px solid var(--ac);padding:8px 12px;margin:8px 0;border-radius:4px}
+</style>
+</head>
+<body>
+<main>
+<h1>RTI Online Text Cleaner</h1>
+<p class="s">Paste text copied from AI tools, Word or websites. Get text that the RTI Online description box accepts.</p>
+
+<div class="card">
+<label for="inp">1. Paste your text here</label>
+<textarea id="inp" placeholder="Paste text here..."></textarea>
+<button id="go">Convert to RTI eligible text</button>
+<button class="g" id="clr">Clear</button>
+</div>
+
+<div id="res" class="card hid">
+<label for="out">2. Cleaned text (ready to paste into RTI Online)</label>
+<textarea id="out" readonly></textarea>
+<button id="cp">Copy cleaned text</button>
+<span id="msg" class="ok"></span>
+<h3>3. What was found and changed</h3>
+<div id="rep"></div>
+</div>
+
+<div class="card">
+<b>Kept as they are:</b> letters, digits, spaces, line breaks (paragraphs) and <code>, . - _ ( ) / @ : &amp; ? \ %</code><br><br>
+<b>Replaced with an allowed equivalent:</b>
+<ul>
+<li>Hidden or odd spaces become a normal space. Tabs become a space.</li>
+<li>Bullet points (&bull; &#9679; &#9642; &#10148; * etc.) at the start of a line become list labels. If the text already uses Roman numbering (i, ii, iii), labels become (A), (B), (C). If it already uses letters, labels become (i), (ii), (iii). If it uses both, labels become Item A, Item B. If neither, (A), (B), (C). Each separate list restarts from the beginning.</li>
+<li>+ becomes plus, = becomes equals, &lt; and &gt; become less than and greater than, &plusmn; becomes plus or minus, &times; becomes x.</li>
+<li>&#8377; becomes Rs, $ becomes USD, &euro; becomes EUR, &pound; becomes GBP, # becomes No., &deg; becomes degrees.</li>
+<li>Semicolon becomes a comma. ! becomes a full stop. [ ] and { } become ( ). Long dashes become -. The ellipsis character becomes ... . Fractions like &frac12; become 1/2.</li>
+</ul>
+<b>Removed (no allowed equivalent):</b> quotation marks, apostrophes, zero-width and other hidden characters, emojis, non-English letters and any other unsupported symbol.<br><br>
+Your text stays on your device. Nothing is uploaded.
+</div>
+</main>
+
+<script>
+(function(){
+var ALLOWED=/^[A-Za-z0-9 \n,.\-_()\/@:&?\\%]$/;
+/* char : [replacement, name, padWithSpaces] */
+var REP={
+ "\u00A0":[" ","Non-breaking space (hidden)"],"\u2007":[" ","Figure space"],"\u202F":[" ","Narrow no-break space"],
+ "\u2002":[" ","En space"],"\u2003":[" ","Em space"],"\u2009":[" ","Thin space"],"\u200A":[" ","Hair space"],
+ "\u3000":[" ","Ideographic space"],"\t":[" ","Tab"],
+ "\u2013":["-","En dash"],"\u2014":["-","Em dash"],"\u2212":["-","Minus sign"],"\u2010":["-","Unicode hyphen"],"\u2011":["-","Non-breaking hyphen"],
+ "\u2026":["...","Ellipsis character"],
+ "\u2028":["\n","Line separator"],"\u2029":["\n","Paragraph separator"],"\u000B":["\n","Vertical tab"],"\u000C":["\n","Form feed"],
+ "+":["plus","Plus sign",1],"=":["equals","Equals sign",1],"<":["less than","Less-than sign",1],">":["greater than","Greater-than sign",1],
+ "\u00B1":["plus or minus","Plus-minus sign",1],"\u00D7":["x","Multiplication sign",1],"\u00F7":["/","Division sign"],
+ "\u20B9":["Rs","Rupee sign",1],"$":["USD","Dollar sign",1],"\u20AC":["EUR","Euro sign",1],"\u00A3":["GBP","Pound sign",1],
+ "#":["No.","Hash sign",1],"\u00B0":["degrees","Degree sign",1],"~":["approx.","Tilde",1],
+ ";":[",","Semicolon"],"!":[".","Exclamation mark"],"|":["-","Vertical bar"],
+ "[":["(","Square bracket"],"]":[")","Square bracket"],"{":["(","Curly bracket"],"}":[")","Curly bracket"],
+ "\u2192":["to","Arrow",1],"\u2794":["to","Arrow",1],
+ "\u00BD":["1/2","Fraction one half"],"\u00BC":["1/4","Fraction one quarter"],"\u00BE":["3/4","Fraction three quarters"],
+ "\u2122":["TM","Trademark sign"],"\u00AE":["(R)","Registered sign"],"\u00A9":["(c)","Copyright sign"],
+ "\u2022":["-","Bullet inside a line"],"\u00B7":["-","Middle dot"],"\u25CF":["-","Black circle"]
+};
+var NAMES={
+ "\u201C":"Smart double quote (left)","\u201D":"Smart double quote (right)","\u2018":"Smart single quote (left)",
+ "\u2019":"Apostrophe / smart single quote (right)","'":"Straight apostrophe",'"':"Straight double quote",
+ "\u200B":"Zero-width space (hidden)","\u200C":"Zero-width non-joiner (hidden)","\u200D":"Zero-width joiner (hidden)",
+ "\uFEFF":"Byte order mark (hidden)","\u00AD":"Soft hyphen (hidden)","\u2060":"Word joiner (hidden)",
+ "\u200E":"Left-to-right mark (hidden)","\u200F":"Right-to-left mark (hidden)",
+ "*":"Asterisk","`":"Backtick","^":"Caret","\u2713":"Check mark","\u2714":"Check mark"
+};
+var BULLET1=/^([ \t\u00A0]*)[\u2022\u25CF\u25AA\u25AB\u25E6\u2023\u2043\u25CB\u25A0\u25A1\u25C6\u25C7\u27A2\u27A4\u2794\u25BA\u25B6\u2605\u2606\u2713\u2714\u2717\u2718\u00B7\u25A3\u2756\u2B24][ \t\u00A0]*/;
+var BULLET2=/^([ \t\u00A0]*)\*[ \t\u00A0]+/;
+function hex(c){var h=c.codePointAt(0).toString(16).toUpperCase();return "U+"+("0000"+h).slice(-Math.max(4,h.length));}
+function nameOf(c){
+ if(REP[c])return REP[c][1];
+ if(NAMES[c])return NAMES[c];
+ var cp=c.codePointAt(0);
+ if(cp>=0x1F000)return "Emoji / symbol";
+ if(cp<32||(cp>=127&&cp<160))return "Control character (hidden)";
+ if(cp>=0x0900&&cp<=0x097F)return "Devanagari (Hindi) character";
+ if(cp>127)return "Non-English / special character";
+ return "Symbol not accepted by RTI Online";
+}
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function show(c){
+ if(c==="\t")return "(tab)";
+ if(/\s/.test(c)||/[\u200B-\u200F\u2060\uFEFF\u00AD]/.test(c)||c.charCodeAt(0)<32)return "(invisible)";
+ return esc(c);
+}
+function toRoman(n){var m=[[10,"x"],[9,"ix"],[5,"v"],[4,"iv"],[1,"i"]],s="";m.forEach(function(p){while(n>=p[0]){s+=p[1];n-=p[0];}});return s;}
+function toLetters(n){var s="";while(n>0){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26);}return s;}
+function detect(lines){
+ var rom=false,alp=false;
+ lines.forEach(function(l){
+  var m=l.match(/^\s*\(?([A-Za-z]{1,5})[.)]\s/);
+  if(!m)return;
+  var t=m[1];
+  if(t.length>1){if(/^([ivxlc]+|[IVXLC]+)$/.test(t))rom=true;}
+  else alp=true;
+ });
+ return {rom:rom,alp:alp};
+}
+function convert(text){
+ var t=text.replace(/\r\n?/g,"\n"),stats={},order=[],notes=[];
+ function rec(c,act){if(!stats[c]){stats[c]={n:0,act:act};order.push(c);}stats[c].n++;}
+ /* 1. bullets to list labels */
+ var lines=t.split("\n"),st=detect(lines),mode,why;
+ if(st.rom&&st.alp){mode="item";why="Your text already uses both Roman and lettered numbering, so bullets became Item A, Item B...";}
+ else if(st.rom){mode="alpha";why="Your text already uses Roman numbering, so bullets became (A), (B), (C)...";}
+ else if(st.alp){mode="roman";why="Your text already uses lettered numbering, so bullets became (i), (ii), (iii)...";}
+ else{mode="alpha";why="Bullets became (A), (B), (C)... so they cannot be confused with numbered points 1, 2, 3.";}
+ var cnt=0,inList=false,used=false;
+ lines=lines.map(function(l){
+  var m=l.match(BULLET1)||l.match(BULLET2);
+  if(!m){if(l.trim()!=="")inList=false;return l;}
+  if(!inList){cnt=0;inList=true;}
+  cnt++;used=true;
+  var ch=l.replace(/^[ \t\u00A0]*/,"").charAt(0).replace(/^$/,"*");
+  var lab=mode==="alpha"?"("+toLetters(cnt)+")":mode==="roman"?"("+toRoman(cnt)+")":"Item "+toLetters(cnt);
+  var first=Array.from(l.slice(m[1].length))[0];
+  rec(first,"Replaced with list label "+(mode==="item"?"Item A, Item B...":mode==="roman"?"(i), (ii)...":"(A), (B)..."));
+  return m[1]+lab+" "+l.slice(m[0].length);
+ });
+ if(used)notes.push(why);
+ t=lines.join("\n");
+ /* 2. character by character */
+ var arr=Array.from(t),out="";
+ for(var i=0;i<arr.length;i++){
+  var c=arr[i];
+  if(ALLOWED.test(c)){out+=c;continue;}
+  if(REP[c]){
+   var r=REP[c][0];
+   if(REP[c][2]){
+    if(/[A-Za-z0-9.]$/.test(out))r=" "+r;
+    if(arr[i+1]&&/[A-Za-z0-9]/.test(arr[i+1]))r=r+" ";
+   }
+   out+=r;
+   var d=REP[c][0];
+   rec(c,"Replaced with "+(d==="\n"?"line break":d===" "?"normal space":"'"+d+"'"));
+  }else{
+   rec(c,"Removed");
+  }
+ }
+ return {out:out,stats:stats,order:order,notes:notes};
+}
+var $=function(i){return document.getElementById(i);};
+$("go").onclick=function(){
+ var r=convert($("inp").value);
+ $("out").value=r.out;
+ $("res").classList.remove("hid");
+ $("msg").textContent="";
+ var h="";
+ if(!r.order.length){h='<p class="ok">No unsupported or hidden characters found. Your text was already clean.</p>';}
+ else{
+  var total=0;r.order.forEach(function(c){total+=r.stats[c].n;});
+  h='<p><span class="bad">'+total+' character(s)</span> of '+r.order.length+' kind(s) were changed:</p>';
+  r.notes.forEach(function(n){h+='<div class="note">'+esc(n)+'</div>';});
+  h+='<table><tr><th>Character</th><th>Code</th><th>What it is</th><th>Times</th><th>Action</th></tr>';
+  r.order.forEach(function(c){
+   var nm=nameOf(c);
+   if(/^(Black circle|Bullet|Middle dot)/.test(nm)||/[\u25AA\u25AB\u25E6\u2023\u2043\u25CB\u25A0\u25A1\u25C6\u25C7\u27A2\u27A4\u25BA\u25B6\u2605\u2606\u25A3\u2756\u2B24]/.test(c)||(c==="*"&&r.stats[c].act!=="Removed"))nm="Bullet point";
+   h+="<tr><td><code>"+show(c)+"</code></td><td>"+hex(c)+"</td><td>"+esc(nm)+"</td><td>"+r.stats[c].n+"</td><td>"+esc(r.stats[c].act)+"</td></tr>";
+  });
+  h+="</table><p>Line breaks, paragraphs, full stops and normal spaces were left untouched.</p>";
+ }
+ $("rep").innerHTML=h;
+};
+$("cp").onclick=function(){
+ var o=$("out");o.select();
+ var done=function(){$("msg").textContent="Copied!";};
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(o.value).then(done,function(){document.execCommand("copy");done();});}
+ else{document.execCommand("copy");done();}
+};
+$("clr").onclick=function(){$("inp").value="";$("out").value="";$("res").classList.add("hid");};
+})();
+</script>
+</body>
+</html>
